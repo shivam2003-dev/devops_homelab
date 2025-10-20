@@ -45,12 +45,12 @@ The DevOps Lab includes the following components:
 
 2. **Deploy the entire platform:**
    ```bash
-   ./deploy-fixed.sh
+   ./deploy.sh
    ```
 
 3. **Start port forwarding:**
    ```bash
-   ./port-forward-fixed.sh
+   ./port-forward.sh
    ```
 
 4. **Access the services:**
@@ -89,7 +89,7 @@ The DevOps Lab includes the following components:
 
 ### Start All Services
 ```bash
-./port-forward-fixed.sh
+./port-forward.sh
 ```
 
 ### Stop All Port Forwarding
@@ -116,13 +116,11 @@ kubectl get pods -A | grep -E "gitea|argocd|grafana|prometheus|vault|harbor|auth
 
 ```
 devops-lab/
-├── deploy-fixed.sh              # Main deployment script
-├── port-forward-fixed.sh        # Port forwarding script
+├── deploy.sh                    # Main deployment script
+├── port-forward.sh              # Port forwarding script
 ├── reset-passwords.sh           # Password reset script
 ├── test-credentials.sh          # Credential testing script
 ├── CREDENTIALS.md              # Complete credentials reference
-├── FINAL_CREDENTIALS.md        # Updated credentials
-├── ACCESS_GUIDE.md              # Troubleshooting guide
 ├── k8s/                        # Kubernetes manifests
 │   ├── gitea/                  # Git server
 │   ├── argocd/                 # GitOps
@@ -175,7 +173,7 @@ The following services use persistent storage:
 
 1. **"Connection Refused"**
    - Check if port forwarding is running: `lsof -i :PORT`
-   - Restart port forwarding: `./port-forward-fixed.sh`
+   - Restart port forwarding: `./port-forward.sh`
 
 2. **"Invalid Credentials"**
    - Use the exact credentials from `FINAL_CREDENTIALS.md`
@@ -234,12 +232,10 @@ The following services use persistent storage:
 
 ### Documentation Files
 - `CREDENTIALS.md` - Complete credentials reference
-- `FINAL_CREDENTIALS.md` - Updated working credentials
-- `ACCESS_GUIDE.md` - Detailed troubleshooting guide
 
 ### Scripts
-- `deploy-fixed.sh` - Main deployment script
-- `port-forward-fixed.sh` - Port forwarding management
+- `deploy.sh` - Main deployment script
+- `port-forward.sh` - Port forwarding management
 - `reset-passwords.sh` - Password reset utility
 - `test-credentials.sh` - Credential testing
 
