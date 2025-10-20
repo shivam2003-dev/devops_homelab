@@ -1,0 +1,37 @@
+configMap:
+  session:
+    cookies:
+      - domain: "devops.localhost"
+        authelia_url: "https://auth.devops.localhost"
+  access_control:
+    default_policy: "deny"
+    rules:
+      - domain: "devops.localhost"
+        policy: "bypass"
+      - domain: "*.devops.localhost"
+        policy: "bypass"
+  authentication_backend:
+    file:
+      path: "/config/users.yml"
+  storage:
+    local:
+      path: "/config/db.sqlite3"
+  notifier:
+    filesystem:
+      filename: "/config/notification.txt"
+
+ingress:
+  enabled: true
+  className: "nginx"
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /$1
+  hostname: "auth.devops.localhost"
+
+persistence:
+  enabled: true
+  size: 1Gi
+  storageClass: "standard"
+
+service:
+  type: ClusterIP
+  port: 8080

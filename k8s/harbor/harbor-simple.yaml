@@ -1,0 +1,204 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: devops-harbor
+  labels:
+    name: devops-harbor
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: harbor-data
+  namespace: devops-harbor
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+  storageClassName: standard
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: harbor-database
+  namespace: devops-harbor
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+  storageClassName: standard
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: harbor-database
+  namespace: devops-harbor
+  labels:
+    app: harbor-database
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: harbor-database
+  template:
+    metadata:
+      labels:
+        app: harbor-database
+    spec:
+      containers:
+      - name: postgresql
+        image: postgres:12
+        env:
+        - name: POSTGRES_DB
+          value: "registry"
+        - name: POSTGRES_USER
+          value: "postgres"
+        - name: POSTGRES_PASSWORD
+          value: "root123"
+        - name: PGDATA
+          value: "/var/lib/postgresql/data/pgdata"
+        volumeMounts:
+        - name: database-data
+          mountPath: /var/lib/postgresql/data
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            cpu: 200m
+            memory: 512Mi
+        readinessProbe:
+          exec:
+            command:
+            - pg_isready
+            - -U
+            - postgres
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        livenessProbe:
+          exec:
+            command:
+            - pg_isready
+            - -U
+            - postgres
+          initialDelaySeconds: 30
+          periodSeconds: 10
+      volumes:
+      - name: database-data
+        persistentVolumeClaim:
+          claimName: harbor-database
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: harbor-database
+  namespace: devops-harbor
+  labels:
+    app: harbor-database
+spec:
+  type: ClusterIP
+  ports:
+  - port: 5432
+    targetPort: 5432
+    name: postgresql
+  selector:
+    app: harbor-database
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: harbor-core
+  namespace: devops-harbor
+  labels:
+    app: harbor-core
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: harbor-core
+  template:
+    metadata:
+      labels:
+        app: harbor-core
+    spec:
+      containers:
+      - name: core
+        image: goharbor/harbor-core:v2.8.0
+        env:
+        - name: CORE_SECRET
+          value: "not-a-secure-secret"
+        - name: JOBSERVICE_SECRET
+          value: "not-a-secure-secret"
+        - name: DATABASE_TYPE
+          value: "postgresql"
+        - name: DATABASE_HOST
+          value: "harbor-database"
+        - name: DATABASE_PORT
+          value: "5432"
+        - name: DATABASE_USERNAME
+          value: "postgres"
+        - name: DATABASE_PASSWORD
+          value: "root123"
+        - name: DATABASE_DATABASE
+          value: "registry"
+        - name: REGISTRY_URL
+          value: "http://harbor-registry:5000"
+        - name: REGISTRY_CONTROLLER_URL
+          value: "http://harbor-registryctl:8080"
+        - name: PORTAL_URL
+          value: "http://harbor-portal:80"
+        - name: LOG_LEVEL
+          value: "info"
+        - name: CONFIG_PATH
+          value: "/etc/harbor/harbor.yml"
+        volumeMounts:
+        - name: harbor-data
+          mountPath: /data
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+        readinessProbe:
+          httpGet:
+            path: /api/v2.0/systeminfo
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /api/v2.0/systeminfo
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+      volumes:
+      - name: harbor-data
+        persistentVolumeClaim:
+          claimName: harbor-data
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: harbor
+  namespace: devops-harbor
+  labels:
+    app: harbor
+spec:
+  type: ClusterIP
+  ports:
+  - port: 80
+    targetPort: 8080
+    name: http
+  selector:
+    app: harbor-core

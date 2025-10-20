@@ -1,0 +1,41 @@
+community:
+  enabled: true
+
+sonarqube:
+  image:
+    repository: sonarqube
+    tag: "9.6-community"
+    pullPolicy: IfNotPresent
+  
+  persistence:
+    enabled: true
+    storageClass: "standard"
+    size: 5Gi
+
+  service:
+    type: ClusterIP
+    port: 9000
+
+  ingress:
+    enabled: true
+    className: "nginx"
+    hosts:
+      - host: sonarqube.devops.localhost
+        paths:
+          - path: /
+            pathType: Prefix
+    annotations:
+      nginx.ingress.kubernetes.io/rewrite-target: /$1
+
+postgresql:
+  enabled: true
+  auth:
+    postgresPassword: "sonar"
+    database: "sonar"
+  primary:
+    persistence:
+      enabled: true
+      storageClass: "standard"
+      size: 5Gi
+
+monitoringPasscode: "sonar123"

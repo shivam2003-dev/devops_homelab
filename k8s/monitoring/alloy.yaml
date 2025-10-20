@@ -1,0 +1,148 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: devops-alloy
+  labels:
+    name: devops-alloy
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: alloy-data
+  namespace: devops-alloy
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 2Gi
+  storageClassName: standard
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: alloy-config
+  namespace: devops-alloy
+data:
+  config.alloy: |
+    // Prometheus remote write
+    prometheus.remote_write "default" {
+      endpoint {
+        url = "http://prometheus-server.devops-monitoring.svc.cluster.local:80/api/v1/write"
+      }
+    }
+    
+    // OTLP receiver for Beyla
+    otelcol.receiver.otlp "default" {
+      grpc {
+        endpoint = "0.0.0.0:4317"
+      }
+      http {
+        endpoint = "0.0.0.0:4318"
+      }
+    }
+    
+    // OTLP exporter to Prometheus
+    otelcol.exporter.prometheus "default" {
+      forward_to = [prometheus.remote_write.default.receiver]
+    }
+    
+    // Pipeline
+    otelcol.processor.batch "default" {
+      timeout = "1s"
+      send_batch_size = 1024
+    }
+    
+    // Connect components
+    otelcol.receiver.otlp.default --> otelcol.processor.batch.default
+    otelcol.processor.batch.default --> otelcol.exporter.prometheus.default
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: alloy
+  namespace: devops-alloy
+  labels:
+    app: alloy
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: alloy
+  template:
+    metadata:
+      labels:
+        app: alloy
+    spec:
+      containers:
+      - name: alloy
+        image: grafana/alloy:1.0.0
+        ports:
+        - containerPort: 4317
+          name: otlp-grpc
+        - containerPort: 4318
+          name: otlp-http
+        - containerPort: 12345
+          name: http
+        args:
+        - run
+        - /etc/alloy/config.alloy
+        - --server.http.listen-addr=0.0.0.0:12345
+        - --storage.path=/var/lib/alloy/data
+        volumeMounts:
+        - name: alloy-config
+          mountPath: /etc/alloy
+        - name: alloy-data
+          mountPath: /var/lib/alloy/data
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+        readinessProbe:
+          httpGet:
+            path: /-/ready
+            port: 12345
+          initialDelaySeconds: 10
+          periodSeconds: 5
+        livenessProbe:
+          httpGet:
+            path: /-/healthy
+            port: 12345
+          initialDelaySeconds: 30
+          periodSeconds: 10
+      volumes:
+      - name: alloy-config
+        configMap:
+          name: alloy-config
+      - name: alloy-data
+        persistentVolumeClaim:
+          claimName: alloy-data
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: alloy
+  namespace: devops-alloy
+  labels:
+    app: alloy
+spec:
+  type: ClusterIP
+  ports:
+  - port: 4317
+    targetPort: 4317
+    name: otlp-grpc
+  - port: 4318
+    targetPort: 4318
+    name: otlp-http
+  - port: 12345
+    targetPort: 12345
+    name: http
+  selector:
+    app: alloy

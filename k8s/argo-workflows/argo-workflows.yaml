@@ -1,0 +1,240 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: devops-argo-workflows
+  labels:
+    name: devops-argo-workflows
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: argo-workflows-data
+  namespace: devops-argo-workflows
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+  storageClassName: standard
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: argo-workflows
+  namespace: devops-argo-workflows
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: argo-workflows
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - pods
+  - pods/exec
+  verbs:
+  - get
+  - list
+  - watch
+  - create
+  - update
+  - patch
+  - delete
+- apiGroups:
+  - ""
+  resources:
+  - configmaps
+  verbs:
+  - get
+  - list
+  - watch
+  - create
+  - update
+  - patch
+  - delete
+- apiGroups:
+  - ""
+  resources:
+  - persistentvolumeclaims
+  verbs:
+  - get
+  - list
+  - watch
+  - create
+  - update
+  - patch
+  - delete
+- apiGroups:
+  - argoproj.io
+  resources:
+  - workflows
+  - workflows/finalizers
+  - workflowtemplates
+  - workflowtemplates/finalizers
+  - cronworkflows
+  - cronworkflows/finalizers
+  verbs:
+  - get
+  - list
+  - watch
+  - create
+  - update
+  - patch
+  - delete
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: argo-workflows
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: argo-workflows
+subjects:
+- kind: ServiceAccount
+  name: argo-workflows
+  namespace: devops-argo-workflows
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: argo-server
+  namespace: devops-argo-workflows
+  labels:
+    app: argo-server
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: argo-server
+  template:
+    metadata:
+      labels:
+        app: argo-server
+    spec:
+      serviceAccountName: argo-workflows
+      containers:
+      - name: argo-server
+        image: quay.io/argoproj/argocli:v3.4.0
+        command:
+        - argo
+        - server
+        - --auth-mode=server
+        - --secure=false
+        - --port=2746
+        - --namespaced
+        - --managed-namespace=devops-argo-workflows
+        ports:
+        - containerPort: 2746
+          name: http
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            cpu: 200m
+            memory: 512Mi
+        readinessProbe:
+          httpGet:
+            path: /healthz
+            port: 2746
+          initialDelaySeconds: 10
+          periodSeconds: 5
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 2746
+          initialDelaySeconds: 30
+          periodSeconds: 10
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: argo-workflow-controller
+  namespace: devops-argo-workflows
+  labels:
+    app: argo-workflow-controller
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: argo-workflow-controller
+  template:
+    metadata:
+      labels:
+        app: argo-workflow-controller
+    spec:
+      serviceAccountName: argo-workflows
+      containers:
+      - name: workflow-controller
+        image: quay.io/argoproj/workflow-controller:v3.4.0
+        args:
+        - --configmap=argo-workflow-controller-configmap
+        - --executor-image=quay.io/argoproj/argoexec:v3.4.0
+        - --namespaced
+        - --managed-namespace=devops-argo-workflows
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            cpu: 200m
+            memory: 512Mi
+        readinessProbe:
+          httpGet:
+            path: /healthz
+            port: 9090
+          initialDelaySeconds: 10
+          periodSeconds: 5
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 9090
+          initialDelaySeconds: 30
+          periodSeconds: 10
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: argo-server
+  namespace: devops-argo-workflows
+  labels:
+    app: argo-server
+spec:
+  type: ClusterIP
+  ports:
+  - port: 80
+    targetPort: 2746
+    name: http
+  selector:
+    app: argo-server
+
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: argo-workflows-ingress
+  namespace: devops-argo-workflows
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+spec:
+  rules:
+  - host: argo-workflows.localhost
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: argo-server
+            port:
+              number: 80

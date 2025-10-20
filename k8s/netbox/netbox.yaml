@@ -1,0 +1,377 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: devops-netbox
+  labels:
+    name: devops-netbox
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: netbox-data
+  namespace: devops-netbox
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+  storageClassName: standard
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: netbox-postgres
+  namespace: devops-netbox
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+  storageClassName: standard
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: netbox-redis
+  namespace: devops-netbox
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 2Gi
+  storageClassName: standard
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: netbox-postgres
+  namespace: devops-netbox
+  labels:
+    app: netbox-postgres
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: netbox-postgres
+  template:
+    metadata:
+      labels:
+        app: netbox-postgres
+    spec:
+      containers:
+      - name: postgresql
+        image: postgres:11
+        env:
+        - name: POSTGRES_DB
+          value: "netbox"
+        - name: POSTGRES_USER
+          value: "netbox"
+        - name: POSTGRES_PASSWORD
+          value: "netbox"
+        - name: PGDATA
+          value: "/var/lib/postgresql/data/pgdata"
+        volumeMounts:
+        - name: postgres-data
+          mountPath: /var/lib/postgresql/data
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            cpu: 200m
+            memory: 512Mi
+        readinessProbe:
+          exec:
+            command:
+            - pg_isready
+            - -U
+            - netbox
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        livenessProbe:
+          exec:
+            command:
+            - pg_isready
+            - -U
+            - netbox
+          initialDelaySeconds: 30
+          periodSeconds: 10
+      volumes:
+      - name: postgres-data
+        persistentVolumeClaim:
+          claimName: netbox-postgres
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: netbox-postgres
+  namespace: devops-netbox
+  labels:
+    app: netbox-postgres
+spec:
+  type: ClusterIP
+  ports:
+  - port: 5432
+    targetPort: 5432
+    name: postgresql
+  selector:
+    app: netbox-postgres
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: netbox-redis
+  namespace: devops-netbox
+  labels:
+    app: netbox-redis
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: netbox-redis
+  template:
+    metadata:
+      labels:
+        app: netbox-redis
+    spec:
+      containers:
+      - name: redis
+        image: redis:7-alpine
+        volumeMounts:
+        - name: redis-data
+          mountPath: /data
+        resources:
+          requests:
+            cpu: 50m
+            memory: 128Mi
+          limits:
+            cpu: 100m
+            memory: 256Mi
+        readinessProbe:
+          exec:
+            command:
+            - redis-cli
+            - ping
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        livenessProbe:
+          exec:
+            command:
+            - redis-cli
+            - ping
+          initialDelaySeconds: 30
+          periodSeconds: 10
+      volumes:
+      - name: redis-data
+        persistentVolumeClaim:
+          claimName: netbox-redis
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: netbox-redis
+  namespace: devops-netbox
+  labels:
+    app: netbox-redis
+spec:
+  type: ClusterIP
+  ports:
+  - port: 6379
+    targetPort: 6379
+    name: redis
+  selector:
+    app: netbox-redis
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: netbox-config
+  namespace: devops-netbox
+data:
+  configuration.py: |
+    import os
+    
+    # Database
+    DATABASE = {
+        'NAME': 'netbox',
+        'USER': 'netbox',
+        'PASSWORD': 'netbox',
+        'HOST': 'netbox-postgres',
+        'PORT': '5432',
+    }
+    
+    # Redis
+    REDIS = {
+        'tasks': {
+            'HOST': 'netbox-redis',
+            'PORT': 6379,
+            'PASSWORD': '',
+            'DATABASE': 0,
+            'SSL': False,
+        },
+        'caching': {
+            'HOST': 'netbox-redis',
+            'PORT': 6379,
+            'PASSWORD': '',
+            'DATABASE': 1,
+            'SSL': False,
+        }
+    }
+    
+    # Secret key
+    SECRET_KEY = 'netbox-secret-key-change-in-production'
+    
+    # Allowed hosts
+    ALLOWED_HOSTS = ['*']
+    
+    # Debug mode
+    DEBUG = True
+    
+    # Time zone
+    TIME_ZONE = 'UTC'
+    
+    # Language
+    LANGUAGE_CODE = 'en-us'
+    
+    # Use database-backed sessions
+    SESSION_ENGINE = 'django.contrib.sessions.backends.db'
+    
+    # Email
+    EMAIL = {
+        'SERVER': 'localhost',
+        'PORT': 25,
+        'USERNAME': '',
+        'PASSWORD': '',
+        'USE_SSL': False,
+        'USE_TLS': False,
+        'TIMEOUT': 10,
+        'FROM': 'NetBox <netbox@localhost>',
+    }
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: netbox
+  namespace: devops-netbox
+  labels:
+    app: netbox
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: netbox
+  template:
+    metadata:
+      labels:
+        app: netbox
+    spec:
+      containers:
+      - name: netbox
+        image: netboxcommunity/netbox:v3.6.0
+        ports:
+        - containerPort: 8001
+          name: http
+        env:
+        - name: DB_HOST
+          value: "netbox-postgres"
+        - name: DB_PORT
+          value: "5432"
+        - name: DB_NAME
+          value: "netbox"
+        - name: DB_USER
+          value: "netbox"
+        - name: DB_PASSWORD
+          value: "netbox"
+        - name: REDIS_HOST
+          value: "netbox-redis"
+        - name: REDIS_PORT
+          value: "6379"
+        - name: REDIS_DB
+          value: "0"
+        - name: SECRET_KEY
+          value: "netbox-secret-key-change-in-production"
+        - name: ALLOWED_HOSTS
+          value: "*"
+        - name: DEBUG
+          value: "True"
+        volumeMounts:
+        - name: netbox-data
+          mountPath: /opt/netbox/netbox/media
+        - name: netbox-config
+          mountPath: /etc/netbox
+        resources:
+          requests:
+            cpu: 200m
+            memory: 512Mi
+          limits:
+            cpu: 500m
+            memory: 1Gi
+        readinessProbe:
+          httpGet:
+            path: /login/
+            port: 8001
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /login/
+            port: 8001
+          initialDelaySeconds: 60
+          periodSeconds: 30
+      volumes:
+      - name: netbox-data
+        persistentVolumeClaim:
+          claimName: netbox-data
+      - name: netbox-config
+        configMap:
+          name: netbox-config
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: netbox
+  namespace: devops-netbox
+  labels:
+    app: netbox
+spec:
+  type: ClusterIP
+  ports:
+  - port: 80
+    targetPort: 8001
+    name: http
+  selector:
+    app: netbox
+
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: netbox-ingress
+  namespace: devops-netbox
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+spec:
+  rules:
+  - host: netbox.localhost
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: netbox
+            port:
+              number: 80

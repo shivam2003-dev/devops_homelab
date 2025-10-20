@@ -1,0 +1,108 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: gitea-app
+  namespace: devops-argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/your-org/devops-lab
+    targetRevision: HEAD
+    path: k8s/gitea
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: devops-gitea
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+    - CreateNamespace=true
+
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: vault-app
+  namespace: devops-argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/your-org/devops-lab
+    targetRevision: HEAD
+    path: k8s/vault
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: devops-vault
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+    - CreateNamespace=true
+
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: harbor-app
+  namespace: devops-argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/your-org/devops-lab
+    targetRevision: HEAD
+    path: k8s/harbor
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: devops-harbor
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+    - CreateNamespace=true
+
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: sonarqube-app
+  namespace: devops-argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/your-org/devops-lab
+    targetRevision: HEAD
+    path: k8s/sonarqube
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: devops-sonarqube
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+    - CreateNamespace=true
+
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: monitoring-app
+  namespace: devops-argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/your-org/devops-lab
+    targetRevision: HEAD
+    path: k8s/monitoring
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: devops-monitoring
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+    - CreateNamespace=true

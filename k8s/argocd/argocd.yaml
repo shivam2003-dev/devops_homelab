@@ -1,0 +1,128 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: devops-argocd
+  labels:
+    name: devops-argocd
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: argocd-data
+  namespace: devops-argocd
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+  storageClassName: standard
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: argocd-server
+  namespace: devops-argocd
+  labels:
+    app: argocd-server
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: argocd-server
+  template:
+    metadata:
+      labels:
+        app: argocd-server
+    spec:
+      containers:
+      - name: argocd-server
+        image: quay.io/argoproj/argocd:v2.8.0
+        ports:
+        - containerPort: 8080
+          name: http
+        - containerPort: 8083
+          name: grpc
+        env:
+        - name: ARGOCD_SERVER_INSECURE
+          value: "true"
+        - name: ARGOCD_SERVER_OPERATION_PROCESSORS
+          value: "10"
+        - name: ARGOCD_SERVER_REPO_SERVER
+          value: "argocd-repo-server:8081"
+        - name: ARGOCD_SERVER_DEX_SERVER
+          value: "argocd-dex-server:5556"
+        - name: ARGOCD_SERVER_APPLICATION_NAMESPACES
+          value: "devops-gitea,devops-vault,devops-harbor,devops-sonarqube,devops-monitoring"
+        volumeMounts:
+        - name: argocd-data
+          mountPath: /app/config/ssh
+        - name: argocd-data
+          mountPath: /app/config/tls
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            cpu: 200m
+            memory: 512Mi
+        readinessProbe:
+          httpGet:
+            path: /healthz
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 5
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+      volumes:
+      - name: argocd-data
+        persistentVolumeClaim:
+          claimName: argocd-data
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: argocd-server
+  namespace: devops-argocd
+  labels:
+    app: argocd-server
+spec:
+  type: ClusterIP
+  ports:
+  - port: 80
+    targetPort: 8080
+    name: http
+  - port: 443
+    targetPort: 8080
+    name: https
+  selector:
+    app: argocd-server
+
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: argocd-ingress
+  namespace: devops-argocd
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+spec:
+  rules:
+  - host: argocd.localhost
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: argocd-server
+            port:
+              number: 80

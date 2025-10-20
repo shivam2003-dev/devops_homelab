@@ -1,0 +1,113 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: devops-beyla
+  labels:
+    name: devops-beyla
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: beyla-config
+  namespace: devops-beyla
+data:
+  beyla.yaml: |
+    discovery:
+      services:
+        - name: gitea
+          open_ports: [3000]
+        - name: vault
+          open_ports: [8200]
+        - name: prometheus
+          open_ports: [9090]
+        - name: grafana
+          open_ports: [3000]
+    
+    metrics:
+      interval: 30s
+      disable_metrics: false
+    
+    otel_exporter:
+      otlp:
+        endpoint: http://alloy:4317
+    
+    print_debug: false
+
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: beyla
+  namespace: devops-beyla
+  labels:
+    app: beyla
+spec:
+  selector:
+    matchLabels:
+      app: beyla
+  template:
+    metadata:
+      labels:
+        app: beyla
+    spec:
+      hostNetwork: true
+      containers:
+      - name: beyla
+        image: grafana/beyla:1.0.0
+        command:
+        - beyla
+        - -config
+        - /etc/beyla/beyla.yaml
+        env:
+        - name: BEYLA_OPEN_PORT
+          value: "3000,8200,9090"
+        - name: BEYLA_LOG_LEVEL
+          value: "info"
+        - name: BEYLA_METRICS_INTERVAL
+          value: "30s"
+        - name: BEYLA_OTEL_EXPORTER_OTLP_ENDPOINT
+          value: "http://alloy:4317"
+        volumeMounts:
+        - name: beyla-config
+          mountPath: /etc/beyla
+        - name: proc
+          mountPath: /host/proc
+          readOnly: true
+        - name: sys
+          mountPath: /host/sys
+          readOnly: true
+        - name: var-run
+          mountPath: /host/var/run
+          readOnly: true
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 200m
+            memory: 256Mi
+        securityContext:
+          privileged: true
+          capabilities:
+            add:
+            - SYS_PTRACE
+            - SYS_ADMIN
+      volumes:
+      - name: beyla-config
+        configMap:
+          name: beyla-config
+      - name: proc
+        hostPath:
+          path: /proc
+      - name: sys
+        hostPath:
+          path: /sys
+      - name: var-run
+        hostPath:
+          path: /var/run
+      tolerations:
+      - operator: Exists
+        effect: NoSchedule
+      - operator: Exists
+        effect: NoExecute
