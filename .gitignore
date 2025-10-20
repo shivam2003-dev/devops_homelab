@@ -1,0 +1,47 @@
+# Kubernetes secrets and sensitive files
+*.secret
+*.key
+*.pem
+*.crt
+
+# Local environment files
+.env
+.env.local
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+*.tmp
+*.temp
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Backup files
+*.bak
+*.backup
+
+# Node modules (if any)
+node_modules/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Helm charts cache
+.helm/
